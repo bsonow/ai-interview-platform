@@ -222,7 +222,53 @@ export default function FitGapReportPage() {
       {/* ── Report ─────────────────────────────────────────────────────────── */}
       {report && (
         <>
-          {/* Skill comparison table */}
+          {/* Generated at + meta */}
+          <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+            <span>
+              {report.skill_comparisons.length} skill{report.skill_comparisons.length !== 1 ? "s" : ""} compared
+            </span>
+            {report.generated_at && (
+              <span>Generated {new Date(report.generated_at).toLocaleString()}</span>
+            )}
+          </div>
+
+          {/* Quick recommendation banner */}
+          {(() => {
+            const comps = report.skill_comparisons;
+            const gaps = comps.filter((c) => c.result === "gap").length;
+            const assessed = comps.filter((c) => c.result !== "not_assessed").length;
+            const pct = assessed > 0 ? Math.round(((assessed - gaps) / assessed) * 100) : 0;
+            const isStrong = gaps === 0 && assessed > 0;
+            const isGapHeavy = assessed > 0 && gaps / assessed > 0.5;
+            return (
+              <div
+                className={`rounded-lg border px-4 py-3 flex items-start gap-3 ${isStrong ? "bg-green-50 border-green-200"
+                    : isGapHeavy ? "bg-amber-50 border-amber-200"
+                      : "bg-blue-50 border-blue-200"
+                  }`}
+              >
+                <span className="text-xl mt-0.5">
+                  {isStrong ? "✅" : isGapHeavy ? "⚠️" : "📊"}
+                </span>
+                <div>
+                  <p className={`text-sm font-semibold ${isStrong ? "text-green-800" : isGapHeavy ? "text-amber-800" : "text-blue-800"}`}>
+                    {isStrong
+                      ? "Strong match — no skill gaps"
+                      : isGapHeavy
+                        ? `${gaps} gap${gaps !== 1 ? "s" : ""} identified — review before proceeding`
+                        : `${pct}% skill alignment`}
+                  </p>
+                  <p className={`text-xs mt-0.5 ${isStrong ? "text-green-700" : isGapHeavy ? "text-amber-700" : "text-blue-700"}`}>
+                    {isStrong
+                      ? "Candidate meets all required skill levels for this role."
+                      : isGapHeavy
+                        ? "More than half of assessed skills are below the required level."
+                        : "Some gaps present — see the comparison table below for specifics."}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Skill Comparison</CardTitle>
