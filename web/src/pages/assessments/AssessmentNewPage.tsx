@@ -177,7 +177,14 @@ export default function AssessmentNewPage() {
 
         {/* Skills section */}
         <div className="space-y-3">
-          <Label>Skills to assess</Label>
+          <div className="flex items-center justify-between">
+            <Label>Skills to assess</Label>
+            {fields.length > 0 && (
+              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                {fields.length} skill{fields.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
 
           {fields.length === 0 ? (
             <div className="border rounded-lg p-6 text-center text-sm text-muted-foreground">
@@ -233,23 +240,24 @@ export default function AssessmentNewPage() {
 
         <Separator />
 
-        {error && (
-          <p className="text-sm text-destructive">{error}</p>
-        )}
-
-        {/* Actions */}
-        <div className="flex justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => navigate("/assessments")}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save &amp; Create Session →
-          </Button>
+        {/* Actions — error shown inline next to submit */}
+        <div className="space-y-2">
+          {error && (
+            <p className="text-sm text-destructive text-right">{error}</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate("/assessments")}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save &amp; Create Session →
+            </Button>
+          </div>
         </div>
       </form>
 
