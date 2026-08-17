@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_08_15_023133) do
+ActiveRecord::Schema[7.0].define(version: 2026_08_17_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -21,7 +21,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_08_15_023133) do
   create_enum "coverage_state", ["not_yet", "initiated", "partial", "covered"]
   create_enum "end_reason", ["manual_candidate", "manual_assessor", "all_covered", "time_ceiling", "error"]
   create_enum "fit_result", ["match", "gap", "exceed", "not_assessed"]
-  create_enum "generation_status", ["pending", "generating", "complete", "failed", "aborted"]
+  create_enum "generation_status", ["pending", "generating", "complete", "failed"]
   create_enum "session_status", ["pending", "active", "ended", "failed"]
   create_enum "speaker_type", ["ai", "candidate"]
 
@@ -117,7 +117,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_08_15_023133) do
     t.jsonb "evidence", default: [], null: false
     t.text "competency_summary", null: false
     t.index ["portfolio_id"], name: "index_portfolio_skills_on_portfolio_id"
-    t.check_constraint "ai_level >= 0 AND ai_level <= 5", name: "chk_portfolio_skills_ai_level"
+    t.check_constraint "ai_level >= 1 AND ai_level <= 5", name: "chk_portfolio_skills_ai_level"
   end
 
   create_table "portfolios", force: :cascade do |t|
