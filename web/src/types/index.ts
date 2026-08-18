@@ -131,6 +131,8 @@ export interface SkillComparison {
   skill_label: string;
   skill_id?: string;
   required_level: number;
+  /** @deprecated legacy reports before Aug 2026 used expected_level — read required_level with fallback */
+  expected_level?: number;
   candidate_level?: number;
   result: SkillComparisonResult;
   delta?: number;

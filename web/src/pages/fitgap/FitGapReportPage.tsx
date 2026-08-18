@@ -36,23 +36,42 @@ export default function FitGapReportPage() {
       setGenerating(false);
       setError(null);
     } catch (e: any) {
-      if (e?.response?.status === 404) {
+      const status = e?.response?.status;
+      if (status === 404) {
         // Report doesn't exist yet — trigger generation once
         if (!generating) {
           try {
-            await portfoliosApi.triggerFitGap(portfolio.id, Number(vacancyId));
+            const triggerRes = await portfoliosApi.triggerFitGap(portfolio.id, Number(vacancyId));
+            // 202 = queued, report not ready yet — start polling
             setGenerating(true);
             setError(null);
           } catch (triggerErr: any) {
+            const triggerStatus = triggerErr?.response?.status;
             setGenerating(false);
-            setError(
-              triggerErr?.response?.data?.error ??
-              "Could not trigger fit/gap generation. The portfolio may not be complete yet."
-            );
+            if (triggerStatus === 422) {
+              setError(
+                "Portfolio is not ready for fit/gap analysis yet. " +
+                (triggerErr?.response?.data?.errors?.[0]?.message ?? "Please wait for portfolio generation to complete.")
+              );
+            } else {
+              setError(
+                triggerErr?.response?.data?.errors?.[0]?.message ??
+                "Could not trigger fit/gap generation."
+              );
+            }
           }
         }
+      } else if (status === 422) {
+        setError(
+          "Portfolio is not ready (status: " +
+          (portfolio.generation_status ?? "unknown") +
+          "). Portfolio must be complete before running fit/gap analysis."
+        );
       } else {
-        setError(e?.response?.data?.error ?? "Failed to load fit/gap report.");
+        setError(
+          e?.response?.data?.errors?.[0]?.message ??
+          "Failed to load fit/gap report."
+        );
       }
     }
   }, [portfolio, vacancyId, generating]);
@@ -92,7 +111,11 @@ export default function FitGapReportPage() {
       await portfoliosApi.regenerateFitGap(portfolio.id, Number(vacancyId));
       setGenerating(true);
     } catch (e: any) {
-      setError(e?.response?.data?.error ?? "Regeneration failed.");
+      setError(
+        e?.response?.data?.errors?.[0]?.message ??
+        e?.response?.data?.error ??
+        "Regeneration failed."
+      );
     } finally {
       setRegenerating(false);
     }
@@ -243,8 +266,8 @@ export default function FitGapReportPage() {
             return (
               <div
                 className={`rounded-lg border px-4 py-3 flex items-start gap-3 ${isStrong ? "bg-green-50 border-green-200"
-                    : isGapHeavy ? "bg-amber-50 border-amber-200"
-                      : "bg-blue-50 border-blue-200"
+                  : isGapHeavy ? "bg-amber-50 border-amber-200"
+                    : "bg-blue-50 border-blue-200"
                   }`}
               >
                 <span className="text-xl mt-0.5">
@@ -253,17 +276,17 @@ export default function FitGapReportPage() {
                 <div>
                   <p className={`text-sm font-semibold ${isStrong ? "text-green-800" : isGapHeavy ? "text-amber-800" : "text-blue-800"}`}>
                     {isStrong
-                      ? "Strong match — no skill gaps"
+                      ? "No skill gaps"
                       : isGapHeavy
-                        ? `${gaps} gap${gaps !== 1 ? "s" : ""} identified — review before proceeding`
+                        ? `${gaps} skill gap${gaps !== 1 ? "s" : ""} identified`
                         : `${pct}% skill alignment`}
                   </p>
                   <p className={`text-xs mt-0.5 ${isStrong ? "text-green-700" : isGapHeavy ? "text-amber-700" : "text-blue-700"}`}>
                     {isStrong
-                      ? "Candidate meets all required skill levels for this role."
+                      ? `Candidate meets all required skill levels for this role.`
                       : isGapHeavy
-                        ? "More than half of assessed skills are below the required level."
-                        : "Some gaps present — see the comparison table below for specifics."}
+                        ? `The candidate is below the required level for ${gaps} assessed skill${gaps !== 1 ? "s" : ""}.`
+                        : `${gaps} skill gap${gaps !== 1 ? "s" : ""} present — see the comparison table below for specifics.`}
                   </p>
                 </div>
               </div>
@@ -283,7 +306,7 @@ export default function FitGapReportPage() {
           {/* Culture & competency narrative */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Culture &amp; Competency Fit</CardTitle>
+              <CardTitle className="text-sm">Overall Assessment</CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4 space-y-4">
               {report.culture_narrative ? (
