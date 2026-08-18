@@ -336,16 +336,18 @@ function CandidateCard({
                         {endInfo?.description}
                       </p>
                     </div>
-                    <Button
-                      variant="outline" size="sm"
-                      className="h-7 text-xs border-destructive/30 text-destructive hover:bg-destructive/5 shrink-0"
-                      disabled={retryingId === session.id}
-                      onClick={(e) => { e.stopPropagation(); onRetry(session); }}
-                    >
-                      {retryingId === session.id
-                        ? <><RefreshCw className="h-3 w-3 mr-1 animate-spin" />Creating…</>
-                        : <><RefreshCw className="h-3 w-3 mr-1" />New session</>}
-                    </Button>
+                    {!group.sessions.some(s => s.status === "ended" && s.end_reason !== "error" && s.end_reason !== "superseded") && (
+                      <Button
+                        variant="outline" size="sm"
+                        className="h-7 text-xs border-destructive/30 text-destructive hover:bg-destructive/5 shrink-0"
+                        disabled={retryingId === session.id}
+                        onClick={(e) => { e.stopPropagation(); onRetry(session); }}
+                      >
+                        {retryingId === session.id
+                          ? <><RefreshCw className="h-3 w-3 mr-1 animate-spin" />Creating…</>
+                          : <><RefreshCw className="h-3 w-3 mr-1" />New session</>}
+                      </Button>
+                    )}
                   </div>
                 )}
 
