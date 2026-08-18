@@ -6,7 +6,8 @@ import { authApi } from "@/services/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Sparkles } from "lucide-react";
+import BrandLogo from "@/components/layout/BrandLogo";
+import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -39,8 +40,7 @@ export default function LoginPage() {
       {/* Left — decorative panel (hidden on small screens) */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-900 to-slate-800 text-white flex-col justify-between p-12">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-primary" />
-          <span className="text-sm font-semibold tracking-wide">AI Interview Platform</span>
+          <BrandLogo as="div" size="sm" light />
         </div>
 
         <div className="space-y-4">
@@ -63,9 +63,8 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center bg-background px-6">
         <div className="w-full max-w-sm space-y-6">
           {/* Mobile brand */}
-          <div className="lg:hidden flex items-center gap-2 justify-center mb-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-semibold text-muted-foreground">AI Interview Platform</span>
+          <div className="lg:hidden flex justify-center mb-2">
+            <BrandLogo as="div" size="md" />
           </div>
 
           <div>
