@@ -90,40 +90,11 @@ function InterviewCompleteScreen({
           </p>
         </div>
 
-        {/* Portfolio status card */}
-        <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-left space-y-3">
+        {/* What happens next */}
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-left space-y-1.5">
           <p className="font-medium text-foreground">What happens next</p>
-
-          {/* Portfolio generation status */}
-          <div className="flex items-start gap-2.5">
-            {isReady ? (
-              <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-            ) : isFailed ? (
-              <span className="h-4 w-4 mt-0.5 shrink-0 text-destructive text-xs flex items-center justify-center font-bold">✕</span>
-            ) : (
-              <Loader2 className="h-4 w-4 text-primary animate-spin mt-0.5 shrink-0" />
-            )}
-            <div className="space-y-0.5">
-              <p className={cn("text-xs font-medium", isReady ? "text-green-700" : isFailed ? "text-destructive" : "text-foreground")}>
-                {isReady
-                  ? "Assessment submitted"
-                  : isFailed
-                    ? "Assessment processing issue"
-                    : "Generating your assessment…"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {isReady
-                  ? "Your results have been submitted to the hiring team."
-                  : isFailed
-                    ? "There was an issue processing your responses. The team has been notified."
-                    : "Your interview responses are being processed. This takes a moment."}
-              </p>
-            </div>
-          </div>
-
-          {/* Follow-up note */}
-          <p className="text-xs text-muted-foreground border-t pt-2">
-            The assessment team will review your results and contact you regarding next steps.
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Your responses have been submitted. The assessment team will review your results and contact you regarding next steps.
           </p>
         </div>
       </div>
