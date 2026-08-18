@@ -68,10 +68,6 @@ function LevelCell({ level, isOverride }: { level?: number; isOverride?: boolean
 }
 
 export default function ComparisonTable({ comparisons }: ComparisonTableProps) {
-  const matchCount = comparisons.filter((c) => c.result === "match").length;
-  const gapCount = comparisons.filter((c) => c.result === "gap").length;
-  const exceedCount = comparisons.filter((c) => c.result === "exceed").length;
-  const notAssessed = comparisons.filter((c) => c.result === "not_assessed").length;
   const overrideCount = comparisons.filter((c) => c.is_override).length;
 
   if (comparisons.length === 0) {
@@ -108,7 +104,8 @@ export default function ComparisonTable({ comparisons }: ComparisonTableProps) {
               >
                 <td className="px-4 py-2.5 font-medium">{c.skill_label}</td>
                 <td className="px-4 py-2.5 text-center text-muted-foreground">
-                  <LevelCell level={c.required_level} />
+                  {/* backward compat: old reports used expected_level */}
+                  <LevelCell level={c.required_level ?? (c as any).expected_level} />
                 </td>
                 <td className="px-4 py-2.5 text-center">
                   <LevelCell level={c.candidate_level} isOverride={c.is_override} />
@@ -125,24 +122,12 @@ export default function ComparisonTable({ comparisons }: ComparisonTableProps) {
         </table>
       </div>
 
-      {/* Summary bar */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {matchCount > 0 && (
-          <span>✅ Match: {matchCount}</span>
-        )}
-        {gapCount > 0 && (
-          <span>⚠ Gap: {gapCount}</span>
-        )}
-        {exceedCount > 0 && (
-          <span>⭐ Exceeds: {exceedCount}</span>
-        )}
-        {notAssessed > 0 && (
-          <span>— Not assessed: {notAssessed}</span>
-        )}
-        {overrideCount > 0 && (
-          <span className="ml-auto">✏ {overrideCount} human override{overrideCount !== 1 ? "s" : ""} applied</span>
-        )}
-      </div>
+      {/* Override count — only show if relevant, no redundant match/gap counts */}
+      {overrideCount > 0 && (
+        <div className="text-xs text-muted-foreground">
+          ✏ {overrideCount} human override{overrideCount !== 1 ? "s" : ""} applied
+        </div>
+      )}
     </div>
   );
 }

@@ -54,17 +54,18 @@ function ConfidenceSummary({ portfolio }: { portfolio: Portfolio }) {
 
 // ── Vacancy preview card for fit/gap selection ────────────────────────────
 function VacancyPreview({ vacancy }: { vacancy: Vacancy }) {
+  const skills = vacancy.skills ?? [];
   return (
     <div className="text-xs text-muted-foreground space-y-1 mt-1.5">
-      {vacancy.skills.length > 0 && (
+      {skills.length > 0 && (
         <span className="flex flex-wrap gap-1">
-          {vacancy.skills.slice(0, 4).map((s) => (
+          {skills.slice(0, 4).map((s) => (
             <span key={s.skill_label} className="bg-muted px-1.5 py-0.5 rounded">
               {s.skill_label}
             </span>
           ))}
           {vacancy.skills.length > 4 && (
-            <span className="text-muted-foreground">+{vacancy.skills.length - 4} more</span>
+            <span className="text-muted-foreground">+{skills.length - 4} more</span>
           )}
         </span>
       )}
