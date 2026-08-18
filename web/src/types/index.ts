@@ -37,10 +37,11 @@ export interface Session {
   tenant_id?: number;
   candidate_id?: number;
   candidate_name?: string;
+  candidate_email?: string;
   invite_token: string;
   invite_url: string;
   status: "pending" | "active" | "ended";
-  end_reason?: string;
+  end_reason?: "manual_candidate" | "manual_assessor" | "all_covered" | "time_ceiling" | "error" | "superseded";
   started_at?: string;
   ended_at?: string;
   duration_seconds?: number;

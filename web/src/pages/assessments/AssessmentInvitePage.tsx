@@ -49,15 +49,20 @@ const END_REASON_LABELS: Record<string, { label: string; description: string }> 
     label: "Session error",
     description: "An unexpected error occurred during the session.",
   },
+  superseded: {
+    label: "Superseded",
+    description: "This invite was replaced by a newer session for the same candidate.",
+  },
 };
 
-// ── Status badge (used in session history rows) ───────────────────────────
+// ── Status badge ──────────────────────────────────────────────────────────
 
 function StatusDot({ session }: { session: Session }) {
   const isLive = session.status === "active";
-  const isEnded = session.status === "ended";
   const isPending = session.status === "pending";
-  const isFailed = isEnded && session.end_reason === "error";
+  const isFailed = session.status === "ended" && session.end_reason === "error";
+  const isSuperseded = session.status === "ended" && session.end_reason === "superseded";
+  const isCompleted = session.status === "ended" && !isFailed && !isSuperseded;
 
   if (isPending)
     return (
@@ -80,7 +85,15 @@ function StatusDot({ session }: { session: Session }) {
         Failed
       </span>
     );
-  if (isEnded)
+  if (isSuperseded)
+    return (
+      // Neutral grey — not an error, just no longer active
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <span className="w-1.5 h-1.5 rounded-full bg-neutral-400 shrink-0" />
+        Superseded
+      </span>
+    );
+  if (isCompleted)
     return (
       <span className="flex items-center gap-1 text-xs text-green-600">
         <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
@@ -90,36 +103,65 @@ function StatusDot({ session }: { session: Session }) {
   return null;
 }
 
-// ── Candidate group: 1 card per candidate name ────────────────────────────
+// ── Candidate grouping ────────────────────────────────────────────────────
+//
+// Identity priority (per design spec):
+//   1. candidate_id  (Rakamin account)
+//   2. candidate_email (normalised lowercase)
+//   3. session_id    (no identity info — each session is its own "group")
+//
+// candidate_name is NEVER used as an identity key — it is display-only.
+
+function candidateKey(session: Session): string {
+  if (session.candidate_id) return `id:${session.candidate_id}`;
+  if (session.candidate_email) return `email:${session.candidate_email.toLowerCase().trim()}`;
+  return `sid:${session.id}`;
+}
 
 interface CandidateGroup {
-  name: string;
+  key: string;
+  displayName: string;
+  displayEmail: string | null;
   sessions: Session[];
 }
 
 function groupSessionsByCandidate(sessions: Session[]): CandidateGroup[] {
-  const map = new Map<string, Session[]>();
-  for (const s of sessions) {
-    const key = s.candidate_name?.trim() || "__anonymous__";
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(s);
+  const map = new Map<string, CandidateGroup>();
+
+  // Process newest-first so within a group sessions stay newest-first
+  const sorted = [...sessions].sort((a, b) => b.id - a.id);
+
+  for (const s of sorted) {
+    const key = candidateKey(s);
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        displayName: s.candidate_name ?? "Unknown candidate",
+        displayEmail: s.candidate_email ?? null,
+        sessions: [],
+      });
+    }
+    map.get(key)!.sessions.push(s);
   }
-  // Return in insertion order (newest candidate first, sessions newest-first per group)
-  return Array.from(map.entries()).map(([name, grpSessions]) => ({
-    name: name === "__anonymous__" ? "" : name,
-    sessions: [...grpSessions].sort((a, b) => b.id - a.id),
-  }));
+
+  return Array.from(map.values());
 }
 
-function latestStatus(group: CandidateGroup): string {
+function latestStatusLabel(group: CandidateGroup): { text: string; cls: string } | null {
   const latest = group.sessions[0];
-  if (!latest) return "";
-  if (latest.status === "active") return "Live now";
-  if (latest.status === "pending") return "Awaiting candidate";
-  if (latest.status === "ended" && latest.end_reason === "error") return "Last: Failed";
-  if (latest.status === "ended") return "Last: Completed";
-  return "";
+  if (!latest) return null;
+  if (latest.status === "active")
+    return { text: "Live now", cls: "text-primary font-medium" };
+  if (latest.status === "pending")
+    return { text: "Awaiting candidate", cls: "text-amber-600" };
+  if (latest.end_reason === "error")
+    return { text: "Last: Failed", cls: "text-destructive" };
+  if (latest.end_reason === "superseded")
+    return { text: "Last: Superseded", cls: "text-muted-foreground" };
+  return { text: "Last: Completed", cls: "text-green-600" };
 }
+
+// ── CandidateCard ─────────────────────────────────────────────────────────
 
 function CandidateCard({
   group,
@@ -141,18 +183,16 @@ function CandidateCard({
   navigate: ReturnType<typeof useNavigate>;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const displayName = group.name || `Candidate ${index}`;
-  const latest = group.sessions[0];
   const hasLive = group.sessions.some((s) => s.status === "active");
+  const statusInfo = latestStatusLabel(group);
 
-  // Auto-expand if there's a live session
   useEffect(() => {
     if (hasLive) setExpanded(true);
   }, [hasLive]);
 
   return (
     <div className="border rounded-lg overflow-hidden">
-      {/* ── Candidate header row ─────────────────────────────────────────── */}
+      {/* ── Candidate header ────────────────────────────────────────────── */}
       <button
         type="button"
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors text-left"
@@ -163,29 +203,25 @@ function CandidateCard({
             {index}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium truncate">{displayName}</p>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 flex-wrap">
-              <span>
+            <p className="text-sm font-medium truncate">{group.displayName}</p>
+            <div className="flex items-center gap-2 text-xs mt-0.5 flex-wrap">
+              {group.displayEmail && (
+                <span className="text-muted-foreground truncate max-w-[180px]">
+                  {group.displayEmail}
+                </span>
+              )}
+              {group.displayEmail && <span className="text-muted-foreground">·</span>}
+              <span className="text-muted-foreground">
                 {group.sessions.length} session{group.sessions.length !== 1 ? "s" : ""}
               </span>
-              {latestStatus(group) && (
-                <>
-                  <span>·</span>
-                  <span
-                    className={cn(
-                      latest?.status === "active" && "text-primary font-medium",
-                      latest?.status === "ended" && latest?.end_reason === "error" && "text-destructive",
-                      latest?.status === "ended" && latest?.end_reason !== "error" && "text-green-600",
-                    )}
-                  >
-                    {latestStatus(group)}
-                  </span>
+              {statusInfo && (
+                <><span className="text-muted-foreground">·</span>
+                  <span className={statusInfo.cls}>{statusInfo.text}</span>
                 </>
               )}
             </div>
           </div>
         </div>
-
         <ChevronDown
           className={cn(
             "h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0",
@@ -196,10 +232,10 @@ function CandidateCard({
 
       {/* ── Session history ──────────────────────────────────────────────── */}
       {expanded && (
-        <div className="border-t divide-y bg-muted/20">
+        <div className="border-t bg-muted/20">
           {/* Table header */}
-          <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-            <span>Session</span>
+          <div className="grid grid-cols-[40px_1fr_auto_auto] gap-x-3 px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide border-b">
+            <span>#</span>
             <span>Date · Duration</span>
             <span>Status</span>
             <span />
@@ -208,43 +244,45 @@ function CandidateCard({
           {group.sessions.map((session, si) => {
             const sessionNum = group.sessions.length - si;
             const isLive = session.status === "active";
-            const isEnded = session.status === "ended";
             const isPending = session.status === "pending";
-            const isFailed = isEnded && session.end_reason === "error";
+            const isFailed = session.status === "ended" && session.end_reason === "error";
+            const isSuperseded = session.status === "ended" && session.end_reason === "superseded";
+            const isCompleted = session.status === "ended" && !isFailed && !isSuperseded;
             const endInfo = session.end_reason ? END_REASON_LABELS[session.end_reason] : null;
 
             return (
-              <div key={session.id} className={cn(isFailed && "bg-destructive/[0.03]")}>
+              <div
+                key={session.id}
+                className={cn(
+                  "border-b last:border-0",
+                  isFailed && "bg-destructive/[0.03]",
+                  isSuperseded && "opacity-60"
+                )}
+              >
                 {/* Session row */}
-                <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-x-3 px-4 py-2.5 text-sm">
-                  {/* # */}
-                  <span className="text-xs font-mono text-muted-foreground w-8">
+                <div className="grid grid-cols-[40px_1fr_auto_auto] items-center gap-x-3 px-4 py-2.5">
+                  {/* Session number */}
+                  <span className="text-xs font-mono text-muted-foreground">
                     #{sessionNum}
                   </span>
 
                   {/* Date + duration */}
-                  <div className="min-w-0">
-                    <span className="text-xs text-muted-foreground">
-                      {session.started_at
-                        ? new Date(session.started_at).toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
+                  <div className="text-xs text-muted-foreground min-w-0">
+                    {session.started_at
+                      ? new Date(session.started_at).toLocaleDateString("en-GB", {
+                        day: "numeric", month: "short", year: "numeric",
+                      })
+                      : session.created_at
+                        ? new Date(session.created_at).toLocaleDateString("en-GB", {
+                          day: "numeric", month: "short", year: "numeric",
                         })
-                        : session.created_at
-                          ? new Date(session.created_at).toLocaleDateString("en-GB", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          })
-                          : "—"}
-                      {session.duration_seconds ? (
-                        <span className="ml-1.5 inline-flex items-center gap-0.5">
-                          <Timer className="h-3 w-3" />
-                          {formatDuration(session.duration_seconds)}
-                        </span>
-                      ) : null}
-                    </span>
+                        : "—"}
+                    {session.duration_seconds ? (
+                      <span className="ml-1.5 inline-flex items-center gap-0.5">
+                        <Timer className="h-3 w-3" />
+                        {formatDuration(session.duration_seconds)}
+                      </span>
+                    ) : null}
                   </div>
 
                   {/* Status */}
@@ -254,9 +292,7 @@ function CandidateCard({
                   <div className="flex items-center gap-1">
                     {isPending && (
                       <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
+                        variant="ghost" size="sm" className="h-7 px-2 text-xs"
                         onClick={(e) => { e.stopPropagation(); onCopy(session); }}
                       >
                         {copiedId === session.id
@@ -266,9 +302,7 @@ function CandidateCard({
                     )}
                     {isLive && (
                       <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
+                        variant="outline" size="sm" className="h-7 px-2 text-xs"
                         onClick={(e) => {
                           e.stopPropagation();
                           navigate(`/assessments/${assessmentId}/sessions/${session.id}/monitor`);
@@ -277,11 +311,9 @@ function CandidateCard({
                         <Eye className="h-3 w-3 mr-1" />Monitor
                       </Button>
                     )}
-                    {isEnded && !isFailed && (
+                    {isCompleted && (
                       <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
+                        variant="outline" size="sm" className="h-7 px-2 text-xs"
                         onClick={(e) => {
                           e.stopPropagation();
                           navigate(`/assessments/${assessmentId}/sessions/${session.id}/portfolio`);
@@ -294,15 +326,18 @@ function CandidateCard({
                 </div>
 
                 {/* Failed detail + retry */}
-                {isFailed && endInfo && (
+                {isFailed && (
                   <div className="mx-4 mb-2.5 rounded-md border border-destructive/25 bg-destructive/5 px-3 py-2.5 flex items-start justify-between gap-3">
-                    <div className="space-y-0.5">
-                      <p className="text-xs font-medium text-destructive">{endInfo.label}</p>
-                      <p className="text-xs text-muted-foreground">{endInfo.description}</p>
+                    <div className="space-y-0.5 min-w-0">
+                      <p className="text-xs font-medium text-destructive">
+                        {endInfo?.label ?? "Session error"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {endInfo?.description}
+                      </p>
                     </div>
                     <Button
-                      variant="outline"
-                      size="sm"
+                      variant="outline" size="sm"
                       className="h-7 text-xs border-destructive/30 text-destructive hover:bg-destructive/5 shrink-0"
                       disabled={retryingId === session.id}
                       onClick={(e) => { e.stopPropagation(); onRetry(session); }}
@@ -311,6 +346,13 @@ function CandidateCard({
                         ? <><RefreshCw className="h-3 w-3 mr-1 animate-spin" />Creating…</>
                         : <><RefreshCw className="h-3 w-3 mr-1" />New session</>}
                     </Button>
+                  </div>
+                )}
+
+                {/* Superseded note — subtle, no action needed */}
+                {isSuperseded && (
+                  <div className="mx-4 mb-2.5 text-xs text-muted-foreground italic">
+                    {endInfo?.description}
                   </div>
                 )}
               </div>
@@ -322,7 +364,7 @@ function CandidateCard({
   );
 }
 
-// ── Main page ──────────────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────
 
 export default function AssessmentInvitePage() {
   const { id } = useParams<{ id: string }>();
@@ -337,6 +379,7 @@ export default function AssessmentInvitePage() {
   const [newSessionCopied, setNewSessionCopied] = useState(false);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [candidateNameInput, setCandidateNameInput] = useState("");
+  const [candidateEmailInput, setCandidateEmailInput] = useState("");
   const [retryingId, setRetryingId] = useState<number | null>(null);
 
   const loadSessions = useCallback(async () => {
@@ -366,6 +409,7 @@ export default function AssessmentInvitePage() {
 
   const openInviteDialog = () => {
     setCandidateNameInput("");
+    setCandidateEmailInput("");
     setShowInviteDialog(true);
   };
 
@@ -374,7 +418,12 @@ export default function AssessmentInvitePage() {
     setShowInviteDialog(false);
     setNewSession(null);
     try {
-      const res = await assessmentsApi.createSession(Number(id), candidateNameInput.trim() || undefined);
+      const res = await assessmentsApi.createSession(
+        Number(id),
+        candidateNameInput.trim() || undefined,
+        undefined,
+        candidateEmailInput.trim() || undefined
+      );
       const created = res.data.session;
       setNewSession(created);
       setSessions((prev) => [created, ...prev]);
@@ -399,7 +448,12 @@ export default function AssessmentInvitePage() {
   const handleRetry = async (failedSession: Session) => {
     setRetryingId(failedSession.id);
     try {
-      const res = await assessmentsApi.createSession(Number(id), failedSession.candidate_name ?? undefined);
+      const res = await assessmentsApi.createSession(
+        Number(id),
+        failedSession.candidate_name ?? undefined,
+        undefined,
+        failedSession.candidate_email ?? undefined
+      );
       const created = res.data.session;
       setNewSession(created);
       setSessions((prev) => [created, ...prev]);
@@ -419,13 +473,15 @@ export default function AssessmentInvitePage() {
   }
 
   const groups = groupSessionsByCandidate(sessions);
-  const completedCount = sessions.filter((s) => s.status === "ended" && s.end_reason !== "error").length;
+  const completedCount = sessions.filter(
+    (s) => s.status === "ended" && s.end_reason !== "error" && s.end_reason !== "superseded"
+  ).length;
   const liveCount = sessions.filter((s) => s.status === "active").length;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-2 min-w-0">
           <Link to="/assessments" className="text-muted-foreground hover:text-foreground shrink-0">
@@ -435,11 +491,12 @@ export default function AssessmentInvitePage() {
             <h1 className="text-lg font-semibold truncate">{assessment?.name ?? "—"}</h1>
             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 flex-wrap">
               <span className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {assessment?.time_limit_min} min
+                <Clock className="h-3 w-3" />{assessment?.time_limit_min} min
               </span>
               <span>·</span>
-              <span>{assessment?.skills?.length ?? 0} skill{assessment?.skills?.length !== 1 ? "s" : ""}</span>
+              <span>
+                {assessment?.skills?.length ?? 0} skill{assessment?.skills?.length !== 1 ? "s" : ""}
+              </span>
               {completedCount > 0 && (
                 <><span>·</span><span className="text-green-600">{completedCount} completed</span></>
               )}
@@ -466,23 +523,38 @@ export default function AssessmentInvitePage() {
         </div>
       </div>
 
-      {/* ── Invite dialog ──────────────────────────────────────────────────── */}
+      {/* ── Invite dialog ─────────────────────────────────────────────────── */}
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Invite Candidate</DialogTitle></DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="candidate-name">Candidate name</Label>
-            <Input
-              id="candidate-name"
-              placeholder="e.g. Budi Santoso"
-              value={candidateNameInput}
-              onChange={(e) => setCandidateNameInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleInviteCandidate()}
-              autoFocus
-            />
-            <p className="text-xs text-muted-foreground">
-              Optional — helps you identify this session later.
-            </p>
+          <DialogHeader>
+            <DialogTitle>Invite Candidate</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="candidate-name">Candidate name</Label>
+              <Input
+                id="candidate-name"
+                placeholder="e.g. Budi Santoso"
+                value={candidateNameInput}
+                onChange={(e) => setCandidateNameInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleInviteCandidate()}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="candidate-email">Candidate email</Label>
+              <Input
+                id="candidate-email"
+                type="email"
+                placeholder="e.g. budi@company.com"
+                value={candidateEmailInput}
+                onChange={(e) => setCandidateEmailInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleInviteCandidate()}
+              />
+              <p className="text-xs text-muted-foreground">
+                Email identifies the candidate across sessions. Leave blank if unknown.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowInviteDialog(false)}>Cancel</Button>
@@ -521,9 +593,7 @@ export default function AssessmentInvitePage() {
         <h2 className="text-sm font-semibold">
           Candidates
           {groups.length > 0 && (
-            <span className="ml-1.5 text-muted-foreground font-normal">
-              ({groups.length})
-            </span>
+            <span className="ml-1.5 text-muted-foreground font-normal">({groups.length})</span>
           )}
         </h2>
 
@@ -546,7 +616,7 @@ export default function AssessmentInvitePage() {
           <div className="space-y-2">
             {groups.map((group, gi) => (
               <CandidateCard
-                key={group.name + gi}
+                key={group.key}
                 group={group}
                 index={groups.length - gi}
                 assessmentId={id!}
@@ -569,10 +639,7 @@ export default function AssessmentInvitePage() {
             <h2 className="text-sm font-semibold">Skills assessed</h2>
             <div className="space-y-2">
               {assessment.skills.map((s) => (
-                <div
-                  key={s.id ?? s.skill_label}
-                  className="flex items-center justify-between text-sm py-1"
-                >
+                <div key={s.id ?? s.skill_label} className="flex items-center justify-between text-sm py-1">
                   <span className="text-foreground">{s.skill_label}</span>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs text-muted-foreground">Expected</span>
