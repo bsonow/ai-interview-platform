@@ -21,9 +21,115 @@ import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import { useAudioWebSocket } from "@/hooks/useAudioWebSocket";
 import { sessionsApi } from "@/services/sessions";
 import HardwareCheck from "@/components/HardwareCheck";
-import { CheckCircle, Mic, MicOff, Radio } from "lucide-react";
+import { CheckCircle, Loader2, Mic, MicOff, Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CandidateInfo, InterviewState, InterviewSpeaker, TranscriptTurn } from "@/types";
+
+// ── Interview Complete Screen (extracted for clarity) ─────────────────────
+
+type PortfolioStatus = "pending" | "generating" | "complete" | "failed" | "unknown";
+
+function InterviewCompleteScreen({
+  sessionId,
+  token,
+}: {
+  sessionId: number | null;
+  token?: string;
+}) {
+  const [portfolioStatus, setPortfolioStatus] = useState<PortfolioStatus>("pending");
+
+  // Poll portfolio status every 4s until complete/failed
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+
+    const check = async () => {
+      try {
+        const res = await sessionsApi.getPortfolio(sessionId);
+        const data = res.data as any;
+        const status: PortfolioStatus =
+          data?.portfolio?.generation_status ?? data?.status ?? "unknown";
+        if (!cancelled) setPortfolioStatus(status);
+      } catch {
+        if (!cancelled) setPortfolioStatus("unknown");
+      }
+    };
+
+    check();
+    const interval = setInterval(() => {
+      if (portfolioStatus === "complete" || portfolioStatus === "failed") return;
+      check();
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  const isReady = portfolioStatus === "complete";
+  const isFailed = portfolioStatus === "failed";
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="w-full max-w-sm text-center space-y-6">
+        {/* Check mark */}
+        <div className="relative mx-auto w-16 h-16">
+          <div className="absolute inset-0 rounded-full bg-green-100 animate-ping opacity-20" />
+          <div className="relative rounded-full bg-green-100 w-16 h-16 flex items-center justify-center">
+            <CheckCircle className="h-8 w-8 text-green-600" />
+          </div>
+        </div>
+
+        {/* Heading */}
+        <div className="space-y-1.5">
+          <h2 className="text-xl font-semibold">Interview Complete</h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Thank you for your time. Your responses have been recorded.
+          </p>
+        </div>
+
+        {/* Portfolio status card */}
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-left space-y-3">
+          <p className="font-medium text-foreground">What happens next</p>
+
+          {/* Portfolio generation status */}
+          <div className="flex items-start gap-2.5">
+            {isReady ? (
+              <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+            ) : isFailed ? (
+              <span className="h-4 w-4 mt-0.5 shrink-0 text-destructive text-xs flex items-center justify-center font-bold">✕</span>
+            ) : (
+              <Loader2 className="h-4 w-4 text-primary animate-spin mt-0.5 shrink-0" />
+            )}
+            <div className="space-y-0.5">
+              <p className={cn("text-xs font-medium", isReady ? "text-green-700" : isFailed ? "text-destructive" : "text-foreground")}>
+                {isReady
+                  ? "Assessment submitted"
+                  : isFailed
+                    ? "Assessment processing issue"
+                    : "Generating your assessment…"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {isReady
+                  ? "Your results have been submitted to the hiring team."
+                  : isFailed
+                    ? "There was an issue processing your responses. The team has been notified."
+                    : "Your interview responses are being processed. This takes a moment."}
+              </p>
+            </div>
+          </div>
+
+          {/* Follow-up note */}
+          <p className="text-xs text-muted-foreground border-t pt-2">
+            The assessment team will review your results and contact you regarding next steps.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Step indicator shown during idle/hardware check ───────────────────────
 function StepDots({ current }: { current: 0 | 1 }) {
@@ -292,34 +398,7 @@ export default function InterviewPage() {
 
   // ── State: Complete ───────────────────────────────────────────────────────
   if (interviewState === "complete") {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <div className="w-full max-w-sm text-center space-y-6">
-          {/* Success mark */}
-          <div className="relative mx-auto w-16 h-16">
-            <div className="absolute inset-0 rounded-full bg-green-100 animate-ping opacity-30" />
-            <div className="relative rounded-full bg-green-100 w-16 h-16 flex items-center justify-center">
-              <CheckCircle className="h-8 w-8 text-green-600" />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold">Interview Complete</h2>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Thank you for your time. Your responses have been recorded.
-            </p>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              The hiring team will review your results and reach out with next steps.
-            </p>
-          </div>
-
-          <div className="rounded-lg border bg-muted/30 px-4 py-3 text-xs text-muted-foreground text-left space-y-1">
-            <p className="font-medium text-foreground">What happens next</p>
-            <p>Your portfolio is being generated automatically. The assessment team will review it and follow up with you via email.</p>
-          </div>
-        </div>
-      </div>
-    );
+    return <InterviewCompleteScreen sessionId={sessionId} token={token} />;
   }
 
   // ── States: Active interview ──────────────────────────────────────────────
